@@ -116,7 +116,7 @@ def usage():
 
 def main():
     try:
-      opts, args = getopt.getopt(sys.argv[1:], "hA:S:c:", ["help"])
+        opts, args = getopt.getopt(sys.argv[1:], "hA:S:c:", ["help"])
     except getopt.GetoptError:
         usage()
         return UNKNOWN
