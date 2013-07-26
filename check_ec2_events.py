@@ -112,22 +112,32 @@ class AmazonEventCheck(object):
         return WARNING
 
 def usage():
-    print >> sys.stderr, 'Usage: %s [-h|--help] [-c <critical threshold day>]' % sys.argv[0]
+    print >> sys.stderr, 'Usage: %s [-h|--help] [-A <aws_access_key_id>] [-S <aws_secret_access_key>] [-c <day>]' % sys.argv[0]
 
 def main():
     try:
-      opts, args = getopt.getopt(sys.argv[1:], "hc:", ["help"])
+      opts, args = getopt.getopt(sys.argv[1:], "hA:S:c:", ["help"])
     except getopt.GetoptError:
         usage()
         return UNKNOWN
+
+    global KEY_ID, ACCESS_KEY
 
     critical_threshold = 2
     for o, a in opts:
         if o in ("-h", "--help"):
             usage()
             return UNKNOWN
+        if o in ("-A"):
+            KEY_ID = a
+        if o in ("-S"):
+            ACCESS_KEY = a
         if o in ("-c"):
             critical_threshold = int(a)
+
+    if KEY_ID == "" or ACCESS_KEY == "":
+        usage()
+        return UNKNOWN
 
     eventcheck = AmazonEventCheck()
     return eventcheck.check(critical_threshold)
