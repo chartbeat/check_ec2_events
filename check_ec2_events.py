@@ -70,6 +70,11 @@ class AmazonEventCheck(object):
 
         conn = connect_to_region(REGION, aws_access_key_id=KEY_ID, aws_secret_access_key=ACCESS_KEY)
         stats = conn.get_all_instance_status()
+        next_token = stats.next_token
+        while next_token != None:
+            next_stats = conn.get_all_instance_status(next_token=next_token)
+            stats.extend(next_stats)
+            next_token = next_stats
         ret = []
         for stat in stats:
             if stat.events:
