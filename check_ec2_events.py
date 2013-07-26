@@ -74,7 +74,7 @@ class AmazonEventCheck(object):
         while next_token != None:
             next_stats = conn.get_all_instance_status(next_token=next_token)
             stats.extend(next_stats)
-            next_token = next_stats
+            next_token = next_stats.next_token
         ret = []
         for stat in stats:
             if stat.events:
