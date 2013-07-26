@@ -8,6 +8,7 @@
 # instances that need rebooting
 #
 
+import getopt
 import sys
 import re
 
@@ -77,7 +78,7 @@ class AmazonEventCheck(object):
                     ret.append((stat.id, get_instance(stat.id).tags['Name'], event.code, event.not_before))
         return ret
 
-    def check(self, critical_threshold=2):
+    def check(self, critical_threshold):
         """
         Check pending instance events, alert if
         event time is less than critical_threshold
@@ -110,14 +111,26 @@ class AmazonEventCheck(object):
         print 'WARNING: instances with scheduled events %s' % ([(event[0], event[1]) for event in warning_events])
         return WARNING
 
+def usage():
+    print >> sys.stderr, 'Usage: %s [-h|--help] [-c <critical threshold day>]' % sys.argv[0]
 
 def main():
-    if len(sys.argv) != 2:
-        print >> sys.stderr, 'Usage: %s <critical threshold>' % sys.argv[0]
+    try:
+      opts, args = getopt.getopt(sys.argv[1:], "hc:", ["help"])
+    except getopt.GetoptError:
+        usage()
         return UNKNOWN
 
+    critical_threshold = 2
+    for o, a in opts:
+        if o in ("-h", "--help"):
+            usage()
+            return UNKNOWN
+        if o in ("-c"):
+            critical_threshold = int(a)
+
     eventcheck = AmazonEventCheck()
-    return eventcheck.check(int(sys.argv[1]))
+    return eventcheck.check(critical_threshold)
 
 if __name__ == '__main__':
     sys.exit(main())
