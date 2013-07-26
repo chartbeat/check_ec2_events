@@ -111,10 +111,10 @@ class AmazonEventCheck(object):
                 warning_events.append(event)
 
         if critical_events:
-            print 'CRITICAL: instances with events in %d days - %s' % (critical_threshold, [(event[0], event[1]) for event in critical_events])
+            print 'CRITICAL: instances with events in %d days - %s' % (critical_threshold, ", ".join(["%s(%s)" % (event[0], event[1]) for event in critical_events]))
             return CRITICAL
 
-        print 'WARNING: instances with scheduled events %s' % ([(event[0], event[1]) for event in warning_events])
+        print 'WARNING: instances with scheduled events %s' % (", ".join(["%s(%s)" % (event[0], event[1]) for event in warning_events]))
         return WARNING
 
 def usage():
