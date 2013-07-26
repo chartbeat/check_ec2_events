@@ -28,28 +28,28 @@ CRITICAL = 2
 UNKNOWN = 3
 
 
-def get_instance(instance_id):
+def get_instances(instance_ids):
     """
-    Return an Instance object for the given instance id
+    Return an Instance objects for the given instance ids
 
-    @param instance_id: Instance id (string)
-    @return: Instance object, or None if not found
+    @param instance_ids: Instance ids (list)
+    @return: Instance objects (dict)
     """
 
+    instances = dict()
     conn = connect_to_region(REGION, aws_access_key_id=KEY_ID, aws_secret_access_key=ACCESS_KEY)
     try:
-        reservations = conn.get_all_instances([instance_id])
+        reservations = conn.get_all_instances(instance_ids)
     except EC2ResponseError, ex:
-        print 'Got exception when calling EC2 for instance "%s": %s' % \
-                        (instance_id, ex.error_message)
-        return None
+        print 'Got exception when calling EC2 for instances (%s): %s' % \
+                        (", ".join(instance_ids), ex.error_message)
+        return instances
 
     for r in reservations:
-        if len(r.instances) and r.instances[0].id == instance_id:
-            return r.instances[0]
+        if len(r.instances) and r.instances[0].id in instance_ids:
+            instances[r.instances[0].id] = r.instances[0].tags["Name"]
 
-    return None
-
+    return instances
 
 class AmazonEventCheck(object):
     """
@@ -81,7 +81,11 @@ class AmazonEventCheck(object):
                 for event in stat.events:
                     if re.match('^\[Completed\]', event.description):
                         continue
-                    ret.append((stat.id, get_instance(stat.id).tags['Name'], event.code, event.not_before))
+                    ret.append([stat.id, event.code, event.not_before])
+        if len(ret) > 0:
+            instances = get_instances([stat[0] for stat in ret])
+            for stat in ret:
+                stat.insert(1, instances[stat[0]])
         return ret
 
     def check(self, critical_threshold):
