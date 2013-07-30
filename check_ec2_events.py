@@ -8,17 +8,19 @@
 # instances that need rebooting
 #
 
+import getopt
 import sys
 import re
 
 from datetime import datetime
 from datetime import timedelta
-from boto.ec2.connection import EC2Connection
+from boto.ec2 import connect_to_region
 from boto.exception import EC2ResponseError
 
 # Setup IAM User with read-only EC2 access
 KEY_ID = ""
 ACCESS_KEY = ""
+REGION = "us-east-1"
 
 OK = 0
 WARNING = 1
@@ -26,28 +28,28 @@ CRITICAL = 2
 UNKNOWN = 3
 
 
-def get_instance(instance_id):
+def get_instances(instance_ids):
     """
-    Return an Instance object for the given instance id
+    Return an Instance objects for the given instance ids
 
-    @param instance_id: Instance id (string)
-    @return: Instance object, or None if not found
+    @param instance_ids: Instance ids (list)
+    @return: Instance objects (dict)
     """
 
-    conn = EC2Connection(KEY_ID, ACCESS_KEY)
+    instances = dict()
+    conn = connect_to_region(REGION, aws_access_key_id=KEY_ID, aws_secret_access_key=ACCESS_KEY)
     try:
-        reservations = conn.get_all_instances([instance_id])
+        reservations = conn.get_all_instances(instance_ids)
     except EC2ResponseError, ex:
-        print 'Got exception when calling EC2 for instance "%s": %s' % \
-                        (instance_id, ex.error_message)
-        return None
+        print 'Got exception when calling EC2 for instances (%s): %s' % \
+                        (", ".join(instance_ids), ex.error_message)
+        return instances
 
     for r in reservations:
-        if len(r.instances) and r.instances[0].id == instance_id:
-            return r.instances[0]
+        if len(r.instances) and r.instances[0].id in instance_ids:
+            instances[r.instances[0].id] = r.instances[0].tags["Name"]
 
-    return None
-
+    return instances
 
 class AmazonEventCheck(object):
     """
@@ -66,18 +68,27 @@ class AmazonEventCheck(object):
                  Event, Scheduled Date) for hosts with pending events
         """
 
-        conn = EC2Connection(KEY_ID, ACCESS_KEY)
+        conn = connect_to_region(REGION, aws_access_key_id=KEY_ID, aws_secret_access_key=ACCESS_KEY)
         stats = conn.get_all_instance_status()
+        next_token = stats.next_token
+        while next_token != None:
+            next_stats = conn.get_all_instance_status(next_token=next_token)
+            stats.extend(next_stats)
+            next_token = next_stats.next_token
         ret = []
         for stat in stats:
             if stat.events:
                 for event in stat.events:
                     if re.match('^\[Completed\]', event.description):
                         continue
-                    ret.append((stat.id, get_instance(stat.id).tags['Name'], event.code, event.not_before))
+                    ret.append([stat.id, event.code, event.not_before])
+        if len(ret) > 0:
+            instances = get_instances([stat[0] for stat in ret])
+            for stat in ret:
+                stat.insert(1, instances[stat[0]])
         return ret
 
-    def check(self, critical_threshold=2):
+    def check(self, critical_threshold):
         """
         Check pending instance events, alert if
         event time is less than critical_threshold
@@ -104,20 +115,44 @@ class AmazonEventCheck(object):
                 warning_events.append(event)
 
         if critical_events:
-            print 'CRITICAL: instances with events in %d days - %s' % (critical_threshold, [(event[0], event[1]) for event in critical_events])
+            print 'CRITICAL: instances with events in %d days - %s' % (critical_threshold, ", ".join(["%s(%s)" % (event[0], event[1]) for event in critical_events]))
             return CRITICAL
 
-        print 'WARNING: instances with scheduled events %s' % ([(event[0], event[1]) for event in warning_events])
+        print 'WARNING: instances with scheduled events %s' % (", ".join(["%s(%s)" % (event[0], event[1]) for event in warning_events]))
         return WARNING
 
+def usage():
+    print >> sys.stderr, 'Usage: %s [-h|--help] [-A <aws_access_key_id>] [-S <aws_secret_access_key>] [-R <region>] [-c <day>]' % sys.argv[0]
 
 def main():
-    if len(sys.argv) != 2:
-        print >> sys.stderr, 'Usage: %s <critical threshold>' % sys.argv[0]
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "hA:S:R:c:", ["help"])
+    except getopt.GetoptError:
+        usage()
+        return UNKNOWN
+
+    global KEY_ID, ACCESS_KEY, REGION
+
+    critical_threshold = 2
+    for o, a in opts:
+        if o in ("-h", "--help"):
+            usage()
+            return UNKNOWN
+        if o in ("-A"):
+            KEY_ID = a
+        if o in ("-S"):
+            ACCESS_KEY = a
+        if o in ("-R"):
+            REGION = a
+        if o in ("-c"):
+            critical_threshold = int(a)
+
+    if KEY_ID == "" or ACCESS_KEY == "":
+        usage()
         return UNKNOWN
 
     eventcheck = AmazonEventCheck()
-    return eventcheck.check(int(sys.argv[1]))
+    return eventcheck.check(critical_threshold)
 
 if __name__ == '__main__':
     sys.exit(main())
